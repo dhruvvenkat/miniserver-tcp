@@ -103,14 +103,11 @@ int main() {
 
 		std::cout << "server: receieved content " << incomingStr << std::endl;
 		if (strcmp(incomingStr, "exit") == 0 ) {
-			close(sockfd);
-
 			if (send(incomingfd, "closing connection...", 25, 0) == -1) {
 				perror("send");
 			}
 
 			close(incomingfd);
-			exit(0);
 		}
 
 		if ((send(incomingfd, "OK", 4, 0)) == -1) {
@@ -119,5 +116,9 @@ int main() {
 		}	
 
 	}
+
+	close(sockfd);
+	
+	return 0;
 
 }
