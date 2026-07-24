@@ -193,7 +193,7 @@ int main() {
 
                         std::string associatedVal = pairs.at(key);
                         std::string getResponse = "Key: " + key + "\tValue: " + associatedVal;
-                        if (send(incomingfd, getResponse.c_str(), sizeof getResponse, 0) == -1) {
+                        if (send(incomingfd, getResponse.data(), getResponse.size(), 0) == -1) {
                             perror("server: send");
                         }
 
@@ -217,7 +217,7 @@ int main() {
                     } else if (erased == 1) {
                         std:string deleteMsg = "successfully deleted entry with key " + key;
 
-                        if (send(incomingfd, deleteMsg.c_str(), sizeof deleteMsg, 0) == -1) {
+                        if (send(incomingfd, deleteMsg.data(), deleteMsg.size(), 0) == -1) {
                             perror("server: send key not found error");
                             break;
                         }
@@ -248,9 +248,9 @@ int main() {
 
                     } catch (std::out_of_range) {
                         pairs.insert({key, value});
-                        std::string insertMsg = "Entry with key " + key + " and value " + value + " has been inserted successfully";
+                        std::string insertMsg = "Entry with key: " + key + " and value: " + value + " has been inserted successfully";
 
-                        if (send(incomingfd, insertMsg.c_str(), sizeof insertMsg, 0) == -1) {
+                        if (send(incomingfd, insertMsg.data(), insertMsg.size(), 0) == -1) {
                             perror("server: send setResponse (key found)");
                         }
                     }
