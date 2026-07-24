@@ -24,8 +24,10 @@ int main() {
 	char s[INET6_ADDRSTRLEN];
 	int rv;
 
+	char buf[MAX_DATA_SIZE];
 	char incomingStr[MAX_DATA_SIZE];
 	int yes = 1;
+	std::string pending;
 
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_INET; // Limit to IPv4 addresses only
@@ -88,8 +90,9 @@ int main() {
 	std::cout << "server: receieved connection from " << s << std::endl;
 
 	while (1) {
+		numBytes = recv(incomingfd, buf, sizeof buf, 0);
 
-		if ((numBytes = recv(incomingfd, incomingStr, sizeof incomingStr - 1, 0)) == -1) {
+		if (numBytes == -1) {
 			perror("server: recv");
 			continue;
 		}
@@ -99,22 +102,28 @@ int main() {
 			break;
 		}
 
-		incomingStr[numBytes] = '\0'; 
+		pending.append(buf, numBytes);
+		std::size_t newlinePos;
 
-		std::cout << "server: receieved content " << incomingStr << std::endl;
-		if (strcmp(incomingStr, "exit") == 0 ) {
-			if (send(incomingfd, "closing connection...", 25, 0) == -1) {
-				perror("send");
+		while ((newlinePos = pending.find('\n')) != std::string::npos) {
+			std::string command = pending.substr(0, newlinePos);
+			pending.erase(0, newlinePos+1);
+			std::cout << "server: receieved command " << command << '\n';
+
+			if (command == "exit" ) {
+				if (send(incomingfd, "closing connection...", 25, 0) == -1) {
+					perror("send");
+				}
+
+				close(incomingfd);
+				return 0;
 			}
 
-			close(incomingfd);
+			if ((send(incomingfd, "OK\n", 3, 0)) == -1) {
+				perror("send");
+				continue;
+			}	
 		}
-
-		if ((send(incomingfd, "OK", 4, 0)) == -1) {
-			perror("send");
-			continue;
-		}	
-
 	}
 
 	close(sockfd);

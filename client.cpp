@@ -77,6 +77,8 @@ int main(int argc, char *argv[]) {
 			break;
     		}
 
+		strToSend.push_back('\n');
+
 		if (strToSend == "exit") {
 			std::cout << "disconnecting..." << std::endl;
 			return 0;
