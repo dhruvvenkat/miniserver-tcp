@@ -77,6 +77,11 @@ int main(int argc, char *argv[]) {
 			break;
     		}
 
+		if (strToSend == "exit") {
+			std::cout << "disconnecting..." << std::endl;
+			return 0;
+		}
+
 		if (send(sockfd, strToSend.data(), strToSend.size(), 0) == -1) {
 			perror("client: send");
 			continue;
