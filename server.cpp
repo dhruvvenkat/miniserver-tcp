@@ -7,12 +7,20 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <unordered_map>
 
 #define QUEUE_LENGTH 10
 #define MAX_DATA_SIZE 100
 #define PORT "1234"
 
 using namespace std;
+
+enum Command {
+	SET,
+	GET,
+	DELETE,
+	EXIT
+}
 
 int main() {
 	int sockfd;
@@ -26,8 +34,11 @@ int main() {
 
 	char buf[MAX_DATA_SIZE];
 	char incomingStr[MAX_DATA_SIZE];
-	int yes = 1;
+	int yes = 1;	
+
 	std::string pending;
+
+	std::unordered_map<string, string> pairs;
 
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_INET; // Limit to IPv4 addresses only
