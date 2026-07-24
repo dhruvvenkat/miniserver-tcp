@@ -75,32 +75,36 @@ int main() {
 
 	std::cout << "server: waiting for connection..." << std::endl;
 
+	incomingSize = sizeof incomingAddr;
+	int incomingfd = accept(sockfd, (struct sockaddr *)&incomingAddr, &incomingSize);
+	if (incomingfd == -1) {
+		perror("accept");
+		return 2;
+	}
+	
+	// Converting the incoming IP address from pure binary to a human-readable format
+	inet_ntop(incomingAddr.ss_family, (struct sockaddr *)&incomingAddr, s, sizeof s);
+	std::cout << "server: receieved connection from " << s << std::endl;
+
 	while (1) {
-		incomingSize = sizeof incomingAddr;
-		int incomingfd = accept(sockfd, (struct sockaddr *)&incomingAddr, &incomingSize);
-		if (incomingfd == -1) {
-			perror("accept");
-			continue;
-		}
-		
-		// Converting the incoming IP address from pure binary to a human-readable format
-		inet_ntop(incomingAddr.ss_family, (struct sockaddr *)&incomingAddr, s, sizeof s);
-		std::cout << "server: receieved connection from " << s << std::endl;
+		incomingStr[0] = '\0'; 
 
 		if (recv(incomingfd, incomingStr, sizeof incomingStr, 0) == -1) {
 			perror("recv");
 			continue;
 		}
 
+		std::cout << "server: receieved content " << incomingStr << std::endl;
+
 		if ((send(incomingfd, "OK", 4, 0)) == -1) {
 			perror("send");
 			continue;
 		}
-		
+	
 		
 		if (!fork()) {
 			close(sockfd);
-			if (send(incomingfd, "closing connection...", 4, 0) == -1) {
+			if (send(incomingfd, "closing connection...", 25, 0) == -1) {
 				perror("send");
 			}
 			close(incomingfd);
