@@ -1,6 +1,7 @@
 #include <cstring>
 #include <iostream>
 #include <netinet/in.h>
+#include <stdexcept>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -65,6 +66,8 @@ int main() {
 
 	std::string pending;
 	char errCmd[] = "ERROR: send messages in the form {COMMAND KEY VALUE}\ne.g. SET name dhruv\n";
+	char keyNotFoundErr[] = "ERROR: requested key not found in store";
+
 
 	std::vector<std::string> tokens;
 	std::unordered_map<string, string> pairs;
@@ -186,9 +189,40 @@ int main() {
 
 				// TODO: Figure out how to normalize cmd to lowercase
 				if (cmd == "GET") {
-				    // search for key-value pair in entries
+				    try {
+
+                        std::string associatedVal = pairs.at(key);
+                        std::string getResponse = "Key: " + key + "\tValue: " + associatedVal;
+                        if (send(incomingfd, getResponse.c_str(), sizeof getResponse, 0) == -1) {
+                            perror("server: send");
+                        }
+
+					} catch (std::out_of_range) {
+
+					    if (send(incomingfd, keyNotFoundErr, sizeof keyNotFoundErr, 0) == -1) {
+							perror("server: send key not found error");
+							break;
+						}
+
+					}
 				} else if (cmd == "DELETE") {
-				    // delete key-value pair from entries
+
+                    std::size_t erased = pairs.erase(key);
+
+                    if (erased == 0) {
+                        if (send(incomingfd, keyNotFoundErr, sizeof keyNotFoundErr, 0) == -1) {
+                            perror("server: send key not found error");
+                            break;
+                        }
+                    } else if (erased == 1) {
+                        std:string deleteMsg = "successfully deleted entry with key " + key;
+
+                        if (send(incomingfd, deleteMsg.c_str(), sizeof deleteMsg, 0) == -1) {
+                            perror("server: send key not found error");
+                            break;
+                        }
+                    }
+
 				} else {
 				    // TODO: send this out instead of just printing it on server side
 				    std::cout << "ERROR: NOT A COMMAND" << std::endl;
@@ -204,17 +238,32 @@ int main() {
 
                 if (cmd == "SET") {
                     // check if the key already exists in the entries and just return that if it is
-                    // else generate a new entry
+                    try {
+                         std::string associatedVal = pairs.at(key);
+
+                         std::string getResponse = "Your entry already exists with key: " + key + " and value: " + associatedVal;
+                         if (send(incomingfd, getResponse.c_str(), sizeof getResponse, 0) == -1) {
+                             perror("server: send setResponse (key found)");
+                         }
+
+                    } catch (std::out_of_range) {
+                        pairs.insert({key, value});
+                        std::string insertMsg = "Entry with key " + key + " and value " + value + " has been inserted successfully";
+
+                        if (send(incomingfd, insertMsg.c_str(), sizeof insertMsg, 0) == -1) {
+                            perror("server: send setResponse (key found)");
+                        }
+                    }
                 } else {
                     // TODO: send this back to the client
                     std::cout << "ERROR: NOT A COMMAND" << std::endl;
                 }
 			}
 
-			if ((send(incomingfd, "OK\n", 3, 0)) == -1) {
-				perror("send");
-				continue;
-			}
+			// if ((send(incomingfd, "OK\n", 3, 0)) == -1) {
+			// 	perror("send");
+			// 	continue;
+			// }
 
 			cmd.clear();
 			key.clear();
