@@ -104,25 +104,31 @@ int main() {
 
 		pending.append(buf, numBytes);
 		std::size_t newlinePos;
+		bool shouldBreak = false;
 
 		while ((newlinePos = pending.find('\n')) != std::string::npos) {
 			std::string command = pending.substr(0, newlinePos);
 			pending.erase(0, newlinePos+1);
 			std::cout << "server: receieved command " << command << '\n';
 
-			if (command == "exit" ) {
+			if (command == "exit") {
 				if (send(incomingfd, "closing connection...", 25, 0) == -1) {
 					perror("send");
 				}
 
 				close(incomingfd);
-				return 0;
+				shouldBreak = true;
+				break;
 			}
 
 			if ((send(incomingfd, "OK\n", 3, 0)) == -1) {
 				perror("send");
 				continue;
 			}	
+		}
+
+		if (shouldBreak) {
+			break;
 		}
 	}
 

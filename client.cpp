@@ -79,9 +79,9 @@ int main(int argc, char *argv[]) {
 
 		strToSend.push_back('\n');
 
-		if (strToSend == "exit") {
+		if (strToSend == "exit\n") {
 			std::cout << "disconnecting..." << std::endl;
-			return 0;
+			break;
 		}
 
 		if (send(sockfd, strToSend.data(), strToSend.size(), 0) == -1) {
