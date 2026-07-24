@@ -8,6 +8,8 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <unordered_map>
+#include <vector>
+#include <sstream>
 
 #define QUEUE_LENGTH 10
 #define MAX_DATA_SIZE 100
@@ -20,7 +22,31 @@ enum Command {
 	GET,
 	DELETE,
 	EXIT
+};
+
+void tokenizeBySpaces(const std::string &input, std::vector<std::string> &tokens) {
+	istringstream iss(input);
+	std::string buf;
+
+	while (getline(iss, buf, ' ')) {
+		tokens.push_back(buf);
+	}
+	
+	return;
 }
+
+//std::string setCmd(string key, string value, std::unordered_map<string, string> &items) {
+	
+//}
+
+//std::string getCmd(string key, std::unordered_map<string, string> &items) {
+
+//}
+
+//std::string delCmd(string key, std::unordered_map<string, string> &items) {
+
+//}
+
 
 int main() {
 	int sockfd;
@@ -37,7 +63,8 @@ int main() {
 	int yes = 1;	
 
 	std::string pending;
-
+	
+	std::vector<std::string> tokens;
 	std::unordered_map<string, string> pairs;
 
 	memset(&hints, 0, sizeof hints);
@@ -118,9 +145,16 @@ int main() {
 		bool shouldBreak = false;
 
 		while ((newlinePos = pending.find('\n')) != std::string::npos) {
+
 			std::string command = pending.substr(0, newlinePos);
 			pending.erase(0, newlinePos+1);
+
+			tokenizeBySpaces(command, tokens);		
 			std::cout << "server: receieved command " << command << '\n';
+
+			for (auto it = tokens.begin(); it != tokens.end(); it++) {
+				std::cout << "token retrieved:  " << *it << std::endl;
+			}
 
 			if (command == "exit") {
 				if (send(incomingfd, "closing connection...", 25, 0) == -1) {
@@ -135,7 +169,9 @@ int main() {
 			if ((send(incomingfd, "OK\n", 3, 0)) == -1) {
 				perror("send");
 				continue;
-			}	
+			}
+
+			tokens.clear();
 		}
 
 		if (shouldBreak) {
