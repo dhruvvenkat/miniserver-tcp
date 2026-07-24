@@ -16,6 +16,7 @@ using namespace std;
 
 int main() {
 	int sockfd;
+	ssize_t numBytes;
 	struct addrinfo hints, *servinfo, *ptr;
 	struct sockaddr_storage incomingAddr;
 
@@ -87,29 +88,35 @@ int main() {
 	std::cout << "server: receieved connection from " << s << std::endl;
 
 	while (1) {
-		incomingStr[0] = '\0'; 
 
-		if (recv(incomingfd, incomingStr, sizeof incomingStr, 0) == -1) {
-			perror("recv");
+		if ((numBytes = recv(incomingfd, incomingStr, sizeof incomingStr - 1, 0)) == -1) {
+			perror("server: recv");
 			continue;
 		}
 
+		if (numBytes == 0) {
+			std::cout << "server: client disconnected" << std::endl;
+			break;
+		}
+
+		incomingStr[numBytes] = '\0'; 
+
 		std::cout << "server: receieved content " << incomingStr << std::endl;
+		if (strcmp(incomingStr, "exit") == 0 ) {
+			close(sockfd);
+
+			if (send(incomingfd, "closing connection...", 25, 0) == -1) {
+				perror("send");
+			}
+
+			close(incomingfd);
+			exit(0);
+		}
 
 		if ((send(incomingfd, "OK", 4, 0)) == -1) {
 			perror("send");
 			continue;
-		}
-	
-		
-		if (!fork()) {
-			close(sockfd);
-			if (send(incomingfd, "closing connection...", 25, 0) == -1) {
-				perror("send");
-			}
-			close(incomingfd);
-			exit(0);
-		}
+		}	
 
 	}
 

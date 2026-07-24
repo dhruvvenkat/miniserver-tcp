@@ -7,6 +7,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <string>
 
 #define QUEUE_LENGTH 10
 #define MAX_DATA_SIZE 100
@@ -21,7 +22,7 @@ int main(int argc, char *argv[]) {
 	int rv;
 	char s[INET6_ADDRSTRLEN];
 
-	char strToSend[MAX_DATA_SIZE];
+	std::string strToSend;
 
 	if (argc != 2) {
 		std::cerr << "usage: client hostname" << std::endl;
@@ -69,18 +70,31 @@ int main(int argc, char *argv[]) {
 	// master loop
 	while (1) {
 		std::cout << "prompt> ";
-		std::cin >> strToSend;
+		//std::cin >> strToSend;
+		//std::getline(std::cin, strToSend);
 
-		if (send(sockfd, strToSend, sizeof strToSend, 0) == -1) {
+		if (!std::getline(std::cin, strToSend)) {
+			break;
+    		}
+
+		if (send(sockfd, strToSend.data(), strToSend.size(), 0) == -1) {
 			perror("client: send");
 			continue;
 		}
-
-		if (recv(sockfd, buf, sizeof buf, 0) == -1) {
+		
+		if ((numBytes = recv(sockfd, buf, sizeof buf, 0)) == -1) {
 			perror("client: receive");
 			continue;
 		}
-		std::cout << buf << std::endl;
+		
+		if (numBytes == 0) {
+			std::cout << "client: server disconnected" << std::endl;
+			break;
+		}
+		
+//		std::cout << "sent content: " << strToSend << std::endl;
+		std::cout.write(buf, numBytes);
+		std::cout << std::endl;
 	}
 
 	close(sockfd);
