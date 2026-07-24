@@ -92,11 +92,15 @@ int main() {
 			continue;
 		}
 
-		send(incomingfd, "OK", 4, 0);
-
+		if ((send(incomingfd, "OK", 4, 0)) == -1) {
+			perror("send");
+			continue;
+		}
+		
+		
 		if (!fork()) {
 			close(sockfd);
-			if (send(incomingfd, "OK", 4, 0) == -1) {
+			if (send(incomingfd, "closing connection...", 4, 0) == -1) {
 				perror("send");
 			}
 			close(incomingfd);

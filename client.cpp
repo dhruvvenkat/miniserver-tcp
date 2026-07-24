@@ -14,7 +14,76 @@
 
 using namespace std;
 
-int main() {
+int main(int argc, char *argv[]) {
+	int sockfd, numBytes;
+	struct addrinfo hints, *servinfo, *p;
+	char buf[MAX_DATA_SIZE];
+	int rv;
+	char s[INET6_ADDRSTRLEN];
 
+	char strToSend[MAX_DATA_SIZE];
 
+	if (argc != 2) {
+		std::cerr << "usage: client hostname" << std::endl;
+		exit(1);
+	}
+	
+	memset(&hints, 0, sizeof hints);
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+
+	rv = getaddrinfo(argv[1], PORT, &hints, &servinfo);
+	if (rv != 0) {
+		std::cerr << "getaddrinfo: " << gai_strerror(rv);
+		return 1;
+	}
+
+	for (p = servinfo; p != NULL; p = p->ai_next) {
+		sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+		if (sockfd == -1) {
+			perror("client: socket");
+			return 1;
+		}
+
+		inet_ntop(p->ai_family, p->ai_addr, s, sizeof s);
+
+		std::cout << "client: attempting connection to: " << s << std::endl;
+
+		if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
+			perror("client: connect");
+			close(sockfd);
+			continue;
+		}
+
+		break;
+	}
+
+	if (p == NULL) {
+		std::cerr << "client: failed to connect" << std::endl;
+		return 2;
+	}
+
+	inet_ntop(p->ai_family, p->ai_addr, s, sizeof s);
+	std::cout << "client: connected to " << s << std::endl;
+	
+	// master loop
+	while (1) {
+		std::cout << "prompt> ";
+		std::cin >> strToSend;
+
+		if (send(sockfd, strToSend, sizeof strToSend, 0) == -1) {
+			perror("client: send");
+			continue;
+		}
+
+		if (recv(sockfd, buf, sizeof buf, 0) == -1) {
+			perror("client: receive");
+			continue;
+		}
+		std::cout << buf << std::endl;
+	}
+
+	close(sockfd);
+
+	return 0;
 }
