@@ -127,6 +127,10 @@ int main() {
 	inet_ntop(incomingAddr.ss_family, (struct sockaddr *)&incomingAddr, s, sizeof s);
 	std::cout << "server: receieved connection from " << s << std::endl;
 
+	std::string cmd;
+	std::string key;
+	std::string value;
+
 	while (1) {
 		numBytes = recv(incomingfd, buf, sizeof buf, 0);
 
@@ -145,16 +149,32 @@ int main() {
 		bool shouldBreak = false;
 
 		while ((newlinePos = pending.find('\n')) != std::string::npos) {
-
 			std::string command = pending.substr(0, newlinePos);
 			pending.erase(0, newlinePos+1);
 
 			tokenizeBySpaces(command, tokens);		
 			std::cout << "server: receieved command " << command << '\n';
 
-			for (auto it = tokens.begin(); it != tokens.end(); it++) {
-				std::cout << "token retrieved:  " << *it << std::endl;
+			if (tokens.size() < 3) {
+				std::cout << "numtokens: " << tokens.size() << std::endl;
+				if ((send(incomingfd, "OK\n", 3, 0)) == -1) {
+					perror("send");
+					continue;
+				}
+
+				tokens.clear();
+				break;
 			}
+
+			cmd = tokens[0];
+			key = tokens[1];
+			
+			for (int i = 2; i < tokens.size(); i++) {
+				value.append(tokens[i]);
+				value.append(" ");
+			}
+
+			std::cout << "CMD: " << cmd << "  KEY: " << key << "  VAL: " << value << std::endl;
 
 			if (command == "exit") {
 				if (send(incomingfd, "closing connection...", 25, 0) == -1) {
@@ -170,7 +190,10 @@ int main() {
 				perror("send");
 				continue;
 			}
-
+			
+			cmd.clear();
+			key.clear();
+			value.clear();
 			tokens.clear();
 		}
 
