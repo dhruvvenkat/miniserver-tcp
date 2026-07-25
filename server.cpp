@@ -1,4 +1,4 @@
-#include <stdlib.h>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <iostream>
@@ -16,12 +16,10 @@
 #include <cctype>
 #include <mutex>
 #include <thread>
+#include <csignal>
 
 #define QUEUE_LENGTH 10
 #define MAX_DATA_SIZE 100
-//#define PORT "1234"
-
-using namespace std;
 
 enum Command {
 	SET,
@@ -30,8 +28,18 @@ enum Command {
 	EXIT
 };
 
+void signalHandler(int sig) {
+    if (sig == 2) {
+        std::cout << "\nServer interupted, closing..." << std::endl;
+        exit(sig);
+    }
+
+    std::cout << "Interrupt handle " << sig << std::endl;
+    exit(sig);
+}
+
 void tokenizeBySpaces(const std::string &input, std::vector<std::string> &tokens) {
-	istringstream iss(input);
+	std::istringstream iss(input);
 	std::string buf;
 
 	while (getline(iss, buf, ' ')) {
@@ -66,7 +74,7 @@ class Server {
     char errCmd[sizeof("ERROR: send messages in the form {COMMAND KEY VALUE}\ne.g. SET name dhruv\n")] = "ERROR: send messages in the form {COMMAND KEY VALUE}\ne.g. SET name dhruv\n";
     char keyNotFoundErr[sizeof("ERROR: requested key not found in store\n")] = "ERROR: requested key not found in store\n";
 
-    std::unordered_map<string, string> pairs;
+    std::unordered_map<std::string, std::string> pairs;
     // ponytail: global lock, per-key locks if store throughput matters
     std::mutex pairsMutex;
 
@@ -172,7 +180,7 @@ class Server {
                 return true;
             }
         } else if (erased == 1) {
-            std:string deleteMsg = "successfully deleted entry with key " + client.key + "\n";
+            std::string deleteMsg = "successfully deleted entry with key " + client.key + "\n";
 
             if (send(client.socketfd, deleteMsg.data(), deleteMsg.size(), 0) == -1) {
                 perror("server: send key not found error");
@@ -364,6 +372,8 @@ public:
 };
 
 int main(int argc, char *argv[]) {
+    signal(SIGINT, signalHandler);
+
     if (argc < 2) {
         std::cerr << "usage: ./server port" << std::endl;
         return -1;
