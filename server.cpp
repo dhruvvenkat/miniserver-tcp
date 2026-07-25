@@ -1,4 +1,6 @@
+#include <stdlib.h>
 #include <cstring>
+#include <string>
 #include <iostream>
 #include <netinet/in.h>
 #include <stdexcept>
@@ -17,7 +19,7 @@
 
 #define QUEUE_LENGTH 10
 #define MAX_DATA_SIZE 100
-#define PORT "1234"
+//#define PORT "1234"
 
 using namespace std;
 
@@ -68,13 +70,13 @@ class Server {
     // ponytail: global lock, per-key locks if store throughput matters
     std::mutex pairsMutex;
 
-    int setupSocket() {
+    int setupSocket(char *port) {
         memset(&hints, 0, sizeof hints);
         hints.ai_family = AF_INET; // Limit to IPv4 addresses only
         hints.ai_socktype = SOCK_STREAM; // Define TCP socket
         hints.ai_flags = AI_PASSIVE; // Serve from the local machine's IP address
 
-        rv = getaddrinfo(NULL, PORT, &hints, &servinfo);
+        rv = getaddrinfo(NULL, port, &hints, &servinfo);
         if (rv != 0) {
             std::cerr << "getaddrinfo: " << gai_strerror(rv);
             return 1;
@@ -115,6 +117,7 @@ class Server {
             return 1;
         }
 
+        std::cout << "server started on port " << port << "..." << std::endl;
         std::cout << "server: waiting for connection..." << std::endl;
         return 0;
     }
@@ -340,8 +343,8 @@ class Server {
     }
 
 public:
-    int run() {
-        if (setupSocket() != 0) {
+    int run(char *port) {
+        if (setupSocket(port) != 0) {
             return 1;
         }
 
@@ -360,7 +363,14 @@ public:
     }
 };
 
-int main() {
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        std::cerr << "usage: ./server port" << std::endl;
+        return -1;
+    }
+
+    char *portStr = argv[1];
+
     Server server;
-    return server.run();
+    return server.run(portStr);
 }
