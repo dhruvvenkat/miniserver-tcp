@@ -54,7 +54,7 @@ class Server {
 
     std::string pending;
     char errCmd[sizeof("ERROR: send messages in the form {COMMAND KEY VALUE}\ne.g. SET name dhruv\n")] = "ERROR: send messages in the form {COMMAND KEY VALUE}\ne.g. SET name dhruv\n";
-    char keyNotFoundErr[sizeof("ERROR: requested key not found in store")] = "ERROR: requested key not found in store";
+    char keyNotFoundErr[sizeof("ERROR: requested key not found in store\n")] = "ERROR: requested key not found in store\n";
 
     std::vector<std::string> tokens;
     std::unordered_map<string, string> pairs;
@@ -149,7 +149,7 @@ class Server {
     bool processGet() {
         try {
             std::string associatedVal = pairs.at(key);
-            std::string getResponse = "Key: " + key + "\tValue: " + associatedVal;
+            std::string getResponse = "Key: " + key + "\tValue: " + associatedVal + "\n";
             if (send(incomingfd, getResponse.data(), getResponse.size(), 0) == -1) {
                 perror("server: send");
             }
@@ -172,7 +172,7 @@ class Server {
                 return true;
             }
         } else if (erased == 1) {
-            std:string deleteMsg = "successfully deleted entry with key " + key;
+            std:string deleteMsg = "successfully deleted entry with key " + key + "\n";
 
             if (send(incomingfd, deleteMsg.data(), deleteMsg.size(), 0) == -1) {
                 perror("server: send key not found error");
@@ -199,13 +199,13 @@ class Server {
         try {
             std::string associatedVal = pairs.at(key);
 
-            std::string getResponse = "Your entry already exists with key: " + key + " and value: " + associatedVal;
-            if (send(incomingfd, getResponse.c_str(), sizeof getResponse, 0) == -1) {
+            std::string getResponse = "Your entry already exists with key: " + key + " and value: " + associatedVal + "\n";
+            if (send(incomingfd, getResponse.c_str(), getResponse.size(), 0) == -1) {
                 perror("server: send setResponse (key found)");
             }
         } catch (std::out_of_range) {
             pairs.insert({key, value});
-            std::string insertMsg = "Entry with key: " + key + " and value: " + value + " has been inserted successfully";
+            std::string insertMsg = "Entry with key: " + key + " and value: " + value + " has been inserted successfully\n";
 
             if (send(incomingfd, insertMsg.data(), insertMsg.size(), 0) == -1) {
                 perror("server: send setResponse (key found)");
@@ -274,7 +274,7 @@ class Server {
             pending.erase(0, newlinePos+1);
 
             if (command == "exit") {
-                if (send(incomingfd, "closing connection...", 25, 0) == -1) {
+                if (send(incomingfd, "closing connection...\n", sizeof("closing connection...\n") - 1, 0) == -1) {
                     perror("send");
                 }
 
