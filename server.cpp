@@ -12,6 +12,7 @@
 #include <vector>
 #include <sstream>
 #include <cctype>
+#include <thread>
 
 #define QUEUE_LENGTH 10
 #define MAX_DATA_SIZE 100
@@ -125,10 +126,10 @@ class Server {
         // Converting the incoming IP address from pure binary to a human-readable format
         inet_ntop(incomingAddr.ss_family, (struct sockaddr *)&incomingAddr, s, sizeof s);
         std::cout << "server: receieved connection from " << s << std::endl;
-        return 0;
+        return incomingfd;
     }
 
-    int receiveData() {
+    int receiveData(int incomingfd) {
         numBytes = recv(incomingfd, buf, sizeof buf, 0);
 
         if (numBytes == -1) {
@@ -305,13 +306,13 @@ class Server {
         return shouldBreak;
     }
 
-    void handleConnection() {
+    void handleConnection(int incomingfd) {
         cmd.clear();
         key.clear();
         value.clear();
 
         while (1) {
-            if (receiveData() == -1) {
+            if (receiveData(incomingfd) == -1) {
                 continue;
             }
 
@@ -327,20 +328,23 @@ class Server {
 
 public:
     int run() {
+        if (setupSocket() != 0) {
+            return 1;
+        }
+
         while (1) {
-            if (setupSocket() != 0) {
-                return 1;
+            int incomingfd = acceptConnection();
+
+            if (incomingfd == -1) {
+                continue;
             }
 
-            if (acceptConnection() != 0) {
-                return 2;
-            }
-
-            handleConnection();
-            close(sockfd);
+           // handleConnection(incomingfd);
+            std::thread(&Server::handleConnection, this, incomingfd).detach();
             //break;
         }
 
+        close(sockfd);
         return 0;
     }
 };
