@@ -12,6 +12,7 @@
 #include <vector>
 #include <sstream>
 #include <cctype>
+#include <mutex>
 #include <thread>
 
 #define QUEUE_LENGTH 10
@@ -38,31 +39,34 @@ void tokenizeBySpaces(const std::string &input, std::vector<std::string> &tokens
 	return;
 }
 
+struct ClientSession {
+    int socketfd;
+    ssize_t numBytes;
+    char buf[MAX_DATA_SIZE];
+    std::string pending;
+    std::vector<std::string> tokens;
+
+    std::string cmd;
+    std::string key;
+    std::string value;
+};
+
 class Server {
     int sockfd;
-    ssize_t numBytes;
     struct addrinfo hints, *servinfo, *ptr;
-    struct sockaddr_storage incomingAddr;
 
     socklen_t incomingSize;
     char s[INET6_ADDRSTRLEN];
     int rv;
 
-    char buf[MAX_DATA_SIZE];
-    char incomingStr[MAX_DATA_SIZE];
     int yes = 1;
 
-    std::string pending;
     char errCmd[sizeof("ERROR: send messages in the form {COMMAND KEY VALUE}\ne.g. SET name dhruv\n")] = "ERROR: send messages in the form {COMMAND KEY VALUE}\ne.g. SET name dhruv\n";
     char keyNotFoundErr[sizeof("ERROR: requested key not found in store\n")] = "ERROR: requested key not found in store\n";
 
-    std::vector<std::string> tokens;
     std::unordered_map<string, string> pairs;
-
-    int incomingfd;
-    std::string cmd;
-    std::string key;
-    std::string value;
+    // ponytail: global lock, per-key locks if store throughput matters
+    std::mutex pairsMutex;
 
     int setupSocket() {
         memset(&hints, 0, sizeof hints);
@@ -116,11 +120,12 @@ class Server {
     }
 
     int acceptConnection() {
+        struct sockaddr_storage incomingAddr;
         incomingSize = sizeof incomingAddr;
-        incomingfd = accept(sockfd, (struct sockaddr *)&incomingAddr, &incomingSize);
+        int incomingfd = accept(sockfd, (struct sockaddr *)&incomingAddr, &incomingSize);
         if (incomingfd == -1) {
             perror("accept");
-            return 2;
+            return -1;
         }
 
         // Converting the incoming IP address from pure binary to a human-readable format
@@ -129,32 +134,20 @@ class Server {
         return incomingfd;
     }
 
-    int receiveData(int incomingfd) {
-        numBytes = recv(incomingfd, buf, sizeof buf, 0);
-
-        if (numBytes == -1) {
-            perror("server: recv");
-            return -1;
-        }
-
-        if (numBytes == 0) {
-            std::cout << "server: client disconnected" << std::endl;
-            return 0;
-        }
-
-        pending.append(buf, numBytes);
-        return 1;
-    }
-
-    bool processGet() {
+    bool processGet(ClientSession& client) {
         try {
-            std::string associatedVal = pairs.at(key);
-            std::string getResponse = "Key: " + key + "\tValue: " + associatedVal + "\n";
-            if (send(incomingfd, getResponse.data(), getResponse.size(), 0) == -1) {
+            std::string associatedVal;
+            {
+                std::lock_guard<std::mutex> lock(pairsMutex);
+                associatedVal = pairs.at(client.key);
+            }
+
+            std::string getResponse = "Key: " + client.key + "\tValue: " + associatedVal + "\n";
+            if (send(client.socketfd, getResponse.data(), getResponse.size(), 0) == -1) {
                 perror("server: send");
             }
         } catch (std::out_of_range) {
-            if (send(incomingfd, keyNotFoundErr, sizeof keyNotFoundErr, 0) == -1) {
+            if (send(client.socketfd, keyNotFoundErr, sizeof keyNotFoundErr, 0) == -1) {
                 perror("server: send key not found error");
                 return true;
             }
@@ -163,18 +156,22 @@ class Server {
         return false;
     }
 
-    bool processDelete() {
-        std::size_t erased = pairs.erase(key);
+    bool processDelete(ClientSession& client) {
+        std::size_t erased;
+        {
+            std::lock_guard<std::mutex> lock(pairsMutex);
+            erased = pairs.erase(client.key);
+        }
 
         if (erased == 0) {
-            if (send(incomingfd, keyNotFoundErr, sizeof keyNotFoundErr, 0) == -1) {
+            if (send(client.socketfd, keyNotFoundErr, sizeof keyNotFoundErr, 0) == -1) {
                 perror("server: send key not found error");
                 return true;
             }
         } else if (erased == 1) {
-            std:string deleteMsg = "successfully deleted entry with key " + key + "\n";
+            std:string deleteMsg = "successfully deleted entry with key " + client.key + "\n";
 
-            if (send(incomingfd, deleteMsg.data(), deleteMsg.size(), 0) == -1) {
+            if (send(client.socketfd, deleteMsg.data(), deleteMsg.size(), 0) == -1) {
                 perror("server: send key not found error");
                 return true;
             }
@@ -183,10 +180,10 @@ class Server {
         return false;
     }
 
-    bool processNotCommand() {
+    bool processNotCommand(ClientSession& client) {
         // TODO: send this out instead of just printing it on server side
         std::string notCmdErr = "ERROR: NOT A COMMAND\n";
-        if (send(incomingfd, notCmdErr.data(), notCmdErr.size(), 0) == -1) {
+        if (send(client.socketfd, notCmdErr.data(), notCmdErr.size(), 0) == -1) {
             perror("server: send key not found error");
             return true;
         }
@@ -194,20 +191,30 @@ class Server {
         return false;
     }
 
-    bool processSet() {
+    bool processSet(ClientSession& client) {
         // check if the key already exists in the entries and just return that if it is
-        try {
-            std::string associatedVal = pairs.at(key);
+        std::string associatedVal;
+        bool keyExists = true;
 
-            std::string getResponse = "Your entry already exists with key: " + key + " and value: " + associatedVal + "\n";
-            if (send(incomingfd, getResponse.c_str(), getResponse.size(), 0) == -1) {
+        {
+            std::lock_guard<std::mutex> lock(pairsMutex);
+            try {
+                associatedVal = pairs.at(client.key);
+            } catch (std::out_of_range) {
+                pairs.insert({client.key, client.value});
+                keyExists = false;
+            }
+        }
+
+        if (keyExists) {
+            std::string getResponse = "Your entry already exists with key: " + client.key + " and value: " + associatedVal + "\n";
+            if (send(client.socketfd, getResponse.c_str(), getResponse.size(), 0) == -1) {
                 perror("server: send setResponse (key found)");
             }
-        } catch (std::out_of_range) {
-            pairs.insert({key, value});
-            std::string insertMsg = "Entry with key: " + key + " and value: " + value + " has been inserted successfully\n";
+        } else {
+            std::string insertMsg = "Entry with key: " + client.key + " and value: " + client.value + " has been inserted successfully\n";
 
-            if (send(incomingfd, insertMsg.data(), insertMsg.size(), 0) == -1) {
+            if (send(client.socketfd, insertMsg.data(), insertMsg.size(), 0) == -1) {
                 perror("server: send setResponse (key found)");
             }
         }
@@ -215,75 +222,74 @@ class Server {
         return false;
     }
 
-    bool processTwoTokenCommand() {
-        if (cmd == "GET") {
-            return processGet();
-        } else if (cmd == "DELETE") {
-            return processDelete();
+    bool processTwoTokenCommand(ClientSession& client) {
+        if (client.cmd == "GET") {
+            return processGet(client);
+        } else if (client.cmd == "DELETE") {
+            return processDelete(client);
         } else {
-            return processNotCommand();
+            return processNotCommand(client);
         }
     }
 
-    bool processValueCommand() {
-        for (int i = 2; i < tokens.size(); i++) {
-            value.append(tokens[i]);
-            value.append(" ");
+    bool processValueCommand(ClientSession& client) {
+        for (int i = 2; i < client.tokens.size(); i++) {
+            client.value.append(client.tokens[i]);
+            client.value.append(" ");
         }
 
-        std::cout << "CMD: " << cmd << "  KEY: " << key << "  VAL: " << value << std::endl;
+        std::cout << "CMD: " << client.cmd << "  KEY: " << client.key << "  VAL: " << client.value << std::endl;
 
-        if (cmd == "SET") {
-            return processSet();
+        if (client.cmd == "SET") {
+            return processSet(client);
         } else {
-            return processNotCommand();
+            return processNotCommand(client);
         }
     }
 
-    int processCommand(const std::string &command) {
-        tokenizeBySpaces(command, tokens);
+    int processCommand(const std::string &command, ClientSession& client) {
+        tokenizeBySpaces(command, client.tokens);
         std::cout << "server: receieved command " << command << '\n';
 
-        if (tokens.size() < 2) {
-            if ((send(incomingfd, errCmd, strlen(errCmd), 0)) == -1) {
+        if (client.tokens.size() < 2) {
+            if ((send(client.socketfd, errCmd, strlen(errCmd), 0)) == -1) {
                 perror("send");
                 return 2;
             }
 
-            tokens.clear();
+            client.tokens.clear();
             return 1;
         }
 
-        cmd = tokens[0];
-        key = tokens[1];
+        client.cmd = client.tokens[0];
+        client.key = client.tokens[1];
 
-        if (tokens.size() == 2) {
-            return processTwoTokenCommand() ? 1 : 0;
+        if (client.tokens.size() == 2) {
+            return processTwoTokenCommand(client) ? 1 : 0;
         }
 
-        return processValueCommand() ? 1 : 0;
+        return processValueCommand(client) ? 1 : 0;
     }
 
-    bool processPendingCommands() {
+    bool processPendingCommands(ClientSession& client) {
         std::size_t newlinePos;
         bool shouldBreak = false;
 
         // Commands are newline-delimited to avoid issues with TCP latency breaking up commands
-        while ((newlinePos = pending.find('\n')) != std::string::npos) {
-            std::string command = pending.substr(0, newlinePos);
-            pending.erase(0, newlinePos+1);
+        while ((newlinePos = client.pending.find('\n')) != std::string::npos) {
+            std::string command = client.pending.substr(0, newlinePos);
+            client.pending.erase(0, newlinePos+1);
 
             if (command == "exit") {
-                if (send(incomingfd, "closing connection...\n", sizeof("closing connection...\n") - 1, 0) == -1) {
+                if (send(client.socketfd, "closing connection...\n", sizeof("closing connection...\n") - 1, 0) == -1) {
                     perror("send");
                 }
 
-                close(incomingfd);
                 shouldBreak = true;
                 break;
             }
 
-            int commandResult = processCommand(command);
+            int commandResult = processCommand(command, client);
             if (commandResult == 2) {
                 continue;
             }
@@ -292,38 +298,45 @@ class Server {
                 break;
             }
 
-            // if ((send(incomingfd, "OK\n", 3, 0)) == -1) {
-            // 	perror("send");
-            // 	continue;
-            // }
-
-            cmd.clear();
-            key.clear();
-            value.clear();
-            tokens.clear();
+            client.cmd.clear();
+            client.key.clear();
+            client.value.clear();
+            client.tokens.clear();
         }
 
         return shouldBreak;
     }
 
-    void handleConnection(int incomingfd) {
-        cmd.clear();
-        key.clear();
-        value.clear();
+    void handleConnection(int clientFd) {
+        ClientSession client{};
+        client.socketfd = clientFd;
 
-        while (1) {
-            if (receiveData(incomingfd) == -1) {
-                continue;
-            }
+        while (true) {
+            client.numBytes = recv(
+                client.socketfd,
+                client.buf,
+                sizeof client.buf,
+                0
+            );
 
-            if (numBytes == 0) {
+            if (client.numBytes == 0) {
+                std::cout << "client disconnected\n";
                 break;
             }
 
-            if (processPendingCommands()) {
+            if (client.numBytes == -1) {
+                perror("recv");
+                break;
+            }
+
+            client.pending.append(client.buf, client.numBytes);
+
+            if (processPendingCommands(client)) {
                 break;
             }
         }
+
+        close(client.socketfd);
     }
 
 public:
@@ -339,9 +352,7 @@ public:
                 continue;
             }
 
-           // handleConnection(incomingfd);
             std::thread(&Server::handleConnection, this, incomingfd).detach();
-            //break;
         }
 
         close(sockfd);
