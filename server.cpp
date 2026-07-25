@@ -224,7 +224,11 @@ int main() {
 
     				} else {
     				    // TODO: send this out instead of just printing it on server side
-    				    std::cout << "ERROR: NOT A COMMAND" << std::endl;
+    				    std::string notCmdErr = "ERROR: NOT A COMMAND\n";
+                        if (send(incomingfd, notCmdErr.data(), notCmdErr.size(), 0) == -1) {
+                            perror("server: send key not found error");
+                            break;
+                        }
     				}
 
     			} else {
@@ -254,8 +258,11 @@ int main() {
                             }
                         }
                     } else {
-                        // TODO: send this back to the client
-                        std::cout << "ERROR: NOT A COMMAND" << std::endl;
+    				    std::string notCmdErr = "ERROR: NOT A COMMAND\n";
+                        if (send(incomingfd, notCmdErr.data(), notCmdErr.size(), 0) == -1) {
+                            perror("server: send key not found error");
+                            break;
+                        }
                     }
     			}
 
